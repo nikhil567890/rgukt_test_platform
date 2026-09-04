@@ -4,6 +4,7 @@ import { authenticateToken, requireAdmin, AuthRequest } from '../auth';
 import { fixQuestionsWithGemini } from '../gemini';
 import { evaluateSubscription } from '../subscription';
 import { checkAndExpireSubscriptions, getLastExpiryCheckStatus } from '../services/subscriptionExpiryService';
+import { sanitizeTestForPostgres } from '../utils/postgresSanitizer';
 
 const router = Router();
 
@@ -130,26 +131,38 @@ router.post('/tests', async (req: AuthRequest, res: Response): Promise<void> => 
       return;
     }
 
+    // Sanitize payload specifically for PostgreSQL (stripping ONLY NUL \u0000 characters while preserving all LaTeX, symbols, whitespace, and formatting)
+    const sanitizedTest = sanitizeTestForPostgres({
+      title,
+      subject,
+      durationMin,
+      isPublished,
+      questions,
+    });
+
     // Calculate total marks from question marks sum
-    const totalMarks = questions.reduce((sum: number, q: any) => sum + (Number(q.marks) || 1), 0);
+    const totalMarks = sanitizedTest.questions.reduce(
+      (sum: number, q: any) => sum + (typeof q.marks === 'number' ? q.marks : (q.marks !== undefined && !isNaN(Number(q.marks)) ? Number(q.marks) : 1)),
+      0
+    );
 
     const newTest = await prisma.test.create({
       data: {
-        title: title.trim(),
-        subject: subject.trim(),
-        durationMin: Number(durationMin),
+        title: sanitizedTest.title,
+        subject: sanitizedTest.subject,
+        durationMin: Number(sanitizedTest.durationMin),
         totalMarks,
-        isPublished: Boolean(isPublished),
+        isPublished: Boolean(sanitizedTest.isPublished),
         questions: {
-          create: questions.map((q: any) => ({
-            questionText: q.questionText.trim(),
-            optionA: q.optionA.trim(),
-            optionB: q.optionB.trim(),
-            optionC: q.optionC.trim(),
-            optionD: q.optionD.trim(),
-            correctOption: q.correctOption.toUpperCase().trim(),
-            marks: Number(q.marks) || 1,
-            explanation: q.explanation ? q.explanation.trim() : null,
+          create: sanitizedTest.questions.map((q: any) => ({
+            questionText: q.questionText,
+            optionA: q.optionA,
+            optionB: q.optionB,
+            optionC: q.optionC,
+            optionD: q.optionD,
+            correctOption: q.correctOption,
+            marks: typeof q.marks === 'number' ? q.marks : (q.marks !== undefined && !isNaN(Number(q.marks)) ? Number(q.marks) : 1),
+            explanation: q.explanation !== undefined ? q.explanation : null,
           })),
         },
       },
@@ -160,8 +173,16 @@ router.post('/tests', async (req: AuthRequest, res: Response): Promise<void> => 
 
     res.status(201).json({ message: 'Test paper created successfully', test: newTest });
   } catch (err: any) {
-    console.error('Error creating test paper:', err);
-    res.status(500).json({ error: 'Failed to create test paper' });
+    // Log detailed internal error for debugging in server logs without exposing database internals to client
+    console.error('Error creating test paper:', {
+      name: err?.name,
+      code: err?.code,
+      message: err?.message,
+      meta: err?.meta,
+    });
+    res.status(500).json({
+      error: 'Failed to create test paper. Please check the imported question data and try again.',
+    });
   }
 });
 
@@ -177,8 +198,19 @@ router.put('/tests/:id', async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
+    const sanitizedTest = sanitizeTestForPostgres({
+      title,
+      subject,
+      durationMin,
+      isPublished,
+      questions: Array.isArray(questions) ? questions : undefined,
+    });
+
     const totalMarks = Array.isArray(questions)
-      ? questions.reduce((sum: number, q: any) => sum + (Number(q.marks) || 1), 0)
+      ? sanitizedTest.questions.reduce(
+          (sum: number, q: any) => sum + (typeof q.marks === 'number' ? q.marks : (q.marks !== undefined && !isNaN(Number(q.marks)) ? Number(q.marks) : 1)),
+          0
+        )
       : existingTest.totalMarks;
 
     const updatedTest = await prisma.$transaction(async (tx) => {
@@ -189,22 +221,22 @@ router.put('/tests/:id', async (req: AuthRequest, res: Response): Promise<void> 
       return tx.test.update({
         where: { id },
         data: {
-          title: title ? title.trim() : existingTest.title,
-          subject: subject ? subject.trim() : existingTest.subject,
-          durationMin: durationMin !== undefined ? Number(durationMin) : existingTest.durationMin,
+          title: title !== undefined ? sanitizedTest.title : existingTest.title,
+          subject: subject !== undefined ? sanitizedTest.subject : existingTest.subject,
+          durationMin: durationMin !== undefined ? Number(sanitizedTest.durationMin) : existingTest.durationMin,
           isPublished: typeof isPublished === 'boolean' ? isPublished : existingTest.isPublished,
           totalMarks,
           questions: Array.isArray(questions)
             ? {
-                create: questions.map((q: any) => ({
-                  questionText: (q.questionText || '').trim(),
-                  optionA: (q.optionA || '').trim(),
-                  optionB: (q.optionB || '').trim(),
-                  optionC: (q.optionC || '').trim(),
-                  optionD: (q.optionD || '').trim(),
-                  correctOption: (q.correctOption || 'A').toUpperCase().trim(),
-                  marks: Number(q.marks) || 1,
-                  explanation: q.explanation ? q.explanation.trim() : null,
+                create: sanitizedTest.questions.map((q: any) => ({
+                  questionText: q.questionText,
+                  optionA: q.optionA,
+                  optionB: q.optionB,
+                  optionC: q.optionC,
+                  optionD: q.optionD,
+                  correctOption: q.correctOption,
+                  marks: typeof q.marks === 'number' ? q.marks : (q.marks !== undefined && !isNaN(Number(q.marks)) ? Number(q.marks) : 1),
+                  explanation: q.explanation !== undefined ? q.explanation : null,
                 })),
               }
             : undefined,
@@ -217,8 +249,15 @@ router.put('/tests/:id', async (req: AuthRequest, res: Response): Promise<void> 
 
     res.json({ message: 'Test paper updated successfully', test: updatedTest });
   } catch (err: any) {
-    console.error('Error updating test paper:', err);
-    res.status(500).json({ error: err?.message || 'Failed to update test paper' });
+    console.error('Error updating test paper:', {
+      name: err?.name,
+      code: err?.code,
+      message: err?.message,
+      meta: err?.meta,
+    });
+    res.status(500).json({
+      error: 'Failed to update test paper. Please check the imported question data and try again.',
+    });
   }
 });
 

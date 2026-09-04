@@ -32,13 +32,23 @@ export const db = appletConfig.firestoreDatabaseId && appletConfig.firestoreData
 // Safe Analytics initialization for browser environments
 export let analytics: ReturnType<typeof getAnalytics> | null = null;
 
-if (typeof window !== 'undefined') {
-  isSupported().then((supported) => {
-    if (supported) {
-      analytics = getAnalytics(app);
-    }
-  }).catch((err) => {
-    console.warn('Firebase Analytics not supported in this environment:', err);
-  });
+const measurementId = typeof firebaseConfig.measurementId === 'string' ? firebaseConfig.measurementId.trim() : '';
+
+// Only attempt analytics initialization if a valid measurementId is explicitly configured
+if (typeof window !== 'undefined' && Boolean(measurementId)) {
+  isSupported()
+    .then((supported) => {
+      if (supported && measurementId) {
+        try {
+          analytics = getAnalytics(app);
+        } catch {
+          // Gracefully ignore analytics failures in sandboxed or offline environments
+          analytics = null;
+        }
+      }
+    })
+    .catch(() => {
+      analytics = null;
+    });
 }
 
