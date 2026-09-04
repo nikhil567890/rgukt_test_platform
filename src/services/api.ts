@@ -143,11 +143,27 @@ export const authApi = {
 
 // Payment API calls
 export const paymentApi = {
+  getConfig: () =>
+    apiRequest<{
+      configured: boolean;
+      mode: 'LIVE' | 'TEST' | 'SIMULATION';
+      keyPrefix: string | null;
+      hasSecret: boolean;
+      amountPaise: number;
+      amountINR: number;
+      currency: string;
+    }>('/payment/config'),
+
   createOrder: () =>
-    apiRequest<{ orderId: string; amount: number; currency: string; keyId: string; user: any }>(
-      '/payment/create-order',
-      { method: 'POST' }
-    ),
+    apiRequest<{
+      orderId: string;
+      id?: string;
+      amount: number;
+      currency: string;
+      keyId: string;
+      key?: string;
+      user: any;
+    }>('/payment/create-order', { method: 'POST' }),
 
   verifyPayment: (paymentDetails: {
     razorpayOrderId: string;

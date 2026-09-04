@@ -39,12 +39,32 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ isOpen, onClose, onS
 
   const loadRazorpayScript = (): Promise<boolean> => {
     return new Promise((resolve) => {
-      if (window.Razorpay) {
+      if (typeof window !== 'undefined' && window.Razorpay) {
         resolve(true);
         return;
       }
+
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
+      );
+
+      if (existingScript) {
+        if (window.Razorpay) {
+          resolve(true);
+          return;
+        }
+        existingScript.addEventListener('load', () => resolve(true), { once: true });
+        existingScript.addEventListener('error', () => resolve(false), { once: true });
+        // Fallback timeout in case event already fired
+        setTimeout(() => {
+          resolve(Boolean(window.Razorpay));
+        }, 1200);
+        return;
+      }
+
       const script = document.createElement('script');
       script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
       script.onload = () => resolve(true);
       script.onerror = () => resolve(false);
       document.body.appendChild(script);
@@ -61,64 +81,109 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ isOpen, onClose, onS
     setIsProcessing(true);
 
     try {
-      // 1. Ensure Razorpay checkout script is loaded
-      await loadRazorpayScript();
+      // 1. Ensure Razorpay checkout script is loaded (prevent duplicate script tags)
+      const isScriptLoaded = await loadRazorpayScript();
 
       // 2. Create order on backend
       const orderData = await paymentApi.createOrder();
+      const orderId = orderData.orderId || orderData.id;
+      const keyId = orderData.keyId || orderData.key || (import.meta as any).env?.VITE_RAZORPAY_KEY_ID;
 
-      // 3. Initialize Razorpay SDK if available
-      if (window.Razorpay && orderData.keyId) {
-        const options = {
-          key: orderData.keyId,
-          amount: orderData.amount,
-          currency: orderData.currency || 'INR',
-          name: 'RGUKT TestPrep',
-          description: 'Premium Entrance Exam Access (₹3000)',
-          order_id: orderData.orderId,
-          prefill: {
-            name: orderData.user?.name || '',
-            email: orderData.user?.email || '',
-          },
-          theme: {
-            color: '#4f46e5',
-          },
-          handler: async (response: any) => {
-            await verifyPaymentOnBackend({
-              razorpayOrderId: response.razorpay_order_id || orderData.orderId,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-            });
-          },
-          modal: {
-            ondismiss: () => {
-              setIsProcessing(false);
-            },
-          },
-        };
+      console.log('[Razorpay] Order created successfully:', {
+        orderId,
+        amount: orderData.amount,
+        currency: orderData.currency || 'INR',
+        keyPrefix: keyId ? `${keyId.substring(0, 8)}...` : 'MISSING',
+      });
 
-        try {
-          const rzp = new window.Razorpay(options);
-          rzp.on('payment.failed', function (resp: any) {
-            console.error('Razorpay payment failed:', resp);
-            setError(resp.error?.description || 'Payment failed via Razorpay gateway.');
-            setIsProcessing(false);
-          });
-          rzp.open();
-        } catch (openErr) {
-          console.warn('Razorpay open failed, showing test mode modal:', openErr);
-          setSimOrderDetails(orderData);
-          setShowSimulatedCheckout(true);
-          setIsProcessing(false);
-        }
-      } else {
-        // Fallback: Open interactive test mode Razorpay Checkout modal
+      // Check if this is a simulation order (local development offline mode)
+      if (orderId?.startsWith('order_sim_')) {
+        console.warn('[Razorpay] Simulation order detected. Opening interactive test mode modal.');
         setSimOrderDetails(orderData);
         setShowSimulatedCheckout(true);
         setIsProcessing(false);
+        return;
+      }
+
+      // 3. Initialize Razorpay SDK for real gateway checkout
+      if (!isScriptLoaded || !window.Razorpay) {
+        throw new Error('Razorpay Checkout SDK failed to load. Please check your internet connection or ad-blocker.');
+      }
+
+      if (!keyId) {
+        throw new Error('Razorpay Key ID was not provided by the server order creation endpoint.');
+      }
+
+      const mode = keyId.startsWith('rzp_live') ? 'LIVE' : keyId.startsWith('rzp_test') ? 'TEST' : 'UNKNOWN';
+
+      // Safe production diagnostic logs (CRITICAL CHECK 4)
+      console.log('[Razorpay] mode:', mode);
+      console.log('[Razorpay] key prefix:', keyId?.slice(0, 8));
+      console.log('[Razorpay] order id:', orderId);
+      console.log('[Razorpay] amount:', orderData.amount);
+      console.log('[Razorpay] currency:', orderData.currency || 'INR');
+
+      const options = {
+        key: keyId,
+        amount: orderData.amount,
+        currency: orderData.currency || 'INR',
+        name: 'RGUKT TestPrep',
+        description: 'Premium Entrance Exam Access (₹3000)',
+        order_id: orderId,
+        prefill: {
+          name: orderData.user?.name || '',
+          email: orderData.user?.email || '',
+        },
+        theme: {
+          color: '#4f46e5',
+        },
+        handler: async (response: any) => {
+          console.log('[Razorpay] Payment successful on gateway. Verifying signature on server...');
+          await verifyPaymentOnBackend({
+            razorpayOrderId: response.razorpay_order_id || orderId,
+            razorpayPaymentId: response.razorpay_payment_id,
+            razorpaySignature: response.razorpay_signature,
+          });
+        },
+        modal: {
+          ondismiss: () => {
+            console.log('[Razorpay] Checkout modal dismissed by user.');
+            setIsProcessing(false);
+          },
+        },
+      };
+
+      try {
+        const rzp = new window.Razorpay(options);
+
+        // Safe production diagnostics for payment failures (CRITICAL CHECK 6)
+        rzp.on('payment.failed', function (resp: any) {
+          const errorDetails = {
+            code: resp?.error?.code,
+            description: resp?.error?.description,
+            source: resp?.error?.source,
+            step: resp?.error?.step,
+            reason: resp?.error?.reason,
+            orderId: resp?.error?.metadata?.order_id,
+            paymentId: resp?.error?.metadata?.payment_id,
+          };
+          console.error('[Razorpay Checkout payment.failed]:', errorDetails);
+
+          const failureMsg = resp?.error?.description
+            ? `Payment Failed: ${resp.error.description} (${resp.error.code || 'DECLINED'})`
+            : 'Payment failed via Razorpay gateway. Please check your payment details or try a different method.';
+          setError(failureMsg);
+          setIsProcessing(false);
+        });
+
+        rzp.open();
+      } catch (openErr: any) {
+        console.error('[Razorpay] Checkout open exception:', openErr);
+        setError(`Failed to open Razorpay Checkout: ${openErr?.message || 'SDK Error'}`);
+        setIsProcessing(false);
       }
     } catch (err: any) {
-      console.error('Payment order creation error:', err);
+      console.error('[Razorpay] Order creation/initialization error:', err);
       setError(err.message || 'Failed to initiate payment. Please try again.');
       setIsProcessing(false);
     }
