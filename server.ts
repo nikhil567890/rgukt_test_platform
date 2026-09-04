@@ -19,16 +19,29 @@ import { startDailySubscriptionExpiryCron } from './src/server/services/subscrip
 const PORT = 3000;
 
 async function bootstrapDatabase() {
-  const runBootstrap = () => {
-    execSync('npx prisma db push --accept-data-loss', {
-      stdio: 'inherit',
-      env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
-    });
-  };
+  const isProd = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
+  const dbUrl = (process.env.DATABASE_URL || '').trim();
 
   try {
     console.log('Ensuring database schema is synchronized...');
-    runBootstrap();
+    
+    if (isProd || dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://')) {
+      // Production PostgreSQL: use safe migrations, NEVER db push --accept-data-loss
+      try {
+        execSync('npx prisma migrate deploy', {
+          stdio: 'inherit',
+          env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
+        });
+      } catch (migErr: any) {
+        console.warn('Notice: Migration deploy status:', migErr?.message || migErr);
+      }
+    } else {
+      // Local development with SQLite: safe sync
+      execSync('npx prisma db push', {
+        stdio: 'inherit',
+        env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
+      });
+    }
 
     // Check if admin user exists, if not run seed
     const userCount = await prisma.user.count();
@@ -41,21 +54,6 @@ async function bootstrapDatabase() {
     }
   } catch (err: any) {
     console.error('Database bootstrap notice:', err?.message || err);
-    if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-      try {
-        if (fs.existsSync(localDevDbPath)) {
-          fs.unlinkSync(localDevDbPath);
-        }
-        console.log('Re-initializing fresh local development database...');
-        runBootstrap();
-        execSync('npx tsx prisma/seed.ts', {
-          stdio: 'inherit',
-          env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
-        });
-      } catch (recoveryErr) {
-        console.error('Failed to initialize local database:', recoveryErr);
-      }
-    }
   }
 }
 

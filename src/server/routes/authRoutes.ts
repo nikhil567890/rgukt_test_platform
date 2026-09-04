@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../db';
 import { generateToken, authenticateToken, verifyFirebaseIdToken, AuthRequest, ADMIN_EMAILS } from '../auth';
 import { evaluateSubscription } from '../subscription';
+import { handleDatabaseError } from '../utils/dbErrorHandler';
 
 const router = Router();
 
@@ -76,8 +77,7 @@ router.post('/register', async (req, res): Promise<void> => {
       },
     });
   } catch (err: any) {
-    console.error('Registration error:', err);
-    res.status(500).json({ error: 'Server error during registration' });
+    handleDatabaseError(err, res, 'Server error during registration');
   }
 });
 
@@ -148,8 +148,7 @@ router.post('/login', async (req, res): Promise<void> => {
       },
     });
   } catch (err: any) {
-    console.error('Login error:', err);
-    res.status(500).json({ error: 'Server error during login' });
+    handleDatabaseError(err, res, 'Server error during login');
   }
 });
 
@@ -244,8 +243,7 @@ const handleGoogleAuth = async (req: any, res: Response): Promise<void> => {
       },
     });
   } catch (err: any) {
-    console.error('Google Sign-In Error:', err);
-    res.status(500).json({ error: err?.message || 'Server error during Google Sign-In' });
+    handleDatabaseError(err, res, 'Server error during Google Sign-In');
   }
 };
 
@@ -333,8 +331,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response): Pr
 
     res.json({ user: { ...user, isPremium: sub.isPremium, subscription: sub } });
   } catch (err: any) {
-    console.error('Get me error:', err);
-    res.status(500).json({ error: 'Server error fetching user details' });
+    handleDatabaseError(err, res, 'Server error fetching user details');
   }
 });
 
@@ -422,8 +419,7 @@ router.get('/account-details', authenticateToken, async (req: AuthRequest, res: 
       payments: formattedPayments,
     });
   } catch (err: any) {
-    console.error('Account details error:', err);
-    res.status(500).json({ error: 'Failed to retrieve account and payment details' });
+    handleDatabaseError(err, res, 'Failed to retrieve account and payment details');
   }
 });
 

@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { prisma } from './db';
 import { evaluateSubscription } from './subscription';
+import { isDatabaseError, handleDatabaseError } from './utils/dbErrorHandler';
 
 export function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -204,7 +205,11 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
 
         return next();
       }
-    } catch (fbErr) {
+    } catch (fbErr: any) {
+      if (isDatabaseError(fbErr)) {
+        handleDatabaseError(fbErr, res, 'Database error during token authentication');
+        return;
+      }
       console.warn('Firebase token verification error in authenticateToken:', fbErr);
     }
 
@@ -248,6 +253,10 @@ export async function requireAdmin(req: AuthRequest, res: Response, next: NextFu
     req.user.role = 'ADMIN';
     next();
   } catch (err) {
+    if (isDatabaseError(err)) {
+      handleDatabaseError(err, res, 'Database error verifying admin privileges');
+      return;
+    }
     console.error('Database query error in requireAdmin:', err);
     res.status(500).json({ error: 'Failed to verify admin authorization' });
   }

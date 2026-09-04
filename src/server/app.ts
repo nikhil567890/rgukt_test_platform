@@ -3,6 +3,8 @@ import authRoutes from './routes/authRoutes';
 import paymentRoutes from './routes/paymentRoutes';
 import testRoutes from './routes/testRoutes';
 import adminRoutes from './routes/adminRoutes';
+import { checkDatabaseHealth } from './db';
+import { isDatabaseError } from './utils/dbErrorHandler';
 
 export const app = express();
 
@@ -24,7 +26,38 @@ app.use(express.json({ limit: '10mb' }));
 
 // Health Check Endpoints
 app.get(['/api/health', '/health'], (_req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    time: new Date().toISOString(),
+  });
+});
+
+// Safe database health check endpoint that verifies DB connectivity without leaking credentials or secrets
+app.get(['/api/health/db', '/health/db'], async (_req, res) => {
+  try {
+    const health = await checkDatabaseHealth();
+    if (health.ok) {
+      res.json({
+        status: 'ok',
+        database: 'connected',
+        provider: health.provider,
+        time: new Date().toISOString(),
+      });
+    } else {
+      res.status(503).json({
+        status: 'error',
+        database: 'disconnected',
+        time: new Date().toISOString(),
+      });
+    }
+  } catch (err: any) {
+    console.error('Health check exception:', err?.message || err);
+    res.status(503).json({
+      status: 'error',
+      database: 'disconnected',
+      time: new Date().toISOString(),
+    });
+  }
 });
 
 // Mount API Routes for both /api/* and root /* (for Vercel serverless prefix tolerance)
@@ -48,9 +81,16 @@ app.all(['/api', '/api/*', '/auth/*', '/payment/*', '/tests/*', '/admin/*'], (re
 // Express Global API Error Handler
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled API Server Error:', err);
+  if (isDatabaseError(err)) {
+    res.status(503).json({
+      error: 'Database temporarily unavailable',
+    });
+    return;
+  }
   res.status(err?.status || 500).json({
     error: err?.message || 'Internal Server Error during request processing',
   });
 });
 
 export default app;
+

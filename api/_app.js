@@ -3,12 +3,14 @@ import express from "express";
 
 // src/server/routes/authRoutes.ts
 import { Router } from "express";
-import bcrypt from "bcryptjs";
+import bcrypt2 from "bcryptjs";
 
 // src/server/db.ts
 import path from "path";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 dotenv.config();
 var isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
 if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
@@ -24,16 +26,46 @@ if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
     "CRITICAL DATABASE CONFIGURATION ERROR: Ephemeral SQLite file database is not allowed in production serverless environments. Please configure a persistent PostgreSQL DATABASE_URL in your Vercel Project Settings."
   );
 }
-var prisma = new PrismaClient();
-if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith("file:")) {
-  prisma.$executeRawUnsafe("PRAGMA journal_mode = WAL;").catch(() => {
-  });
-  prisma.$executeRawUnsafe("PRAGMA busy_timeout = 5000;").catch(() => {
-  });
+var dbUrl = process.env.DATABASE_URL;
+var globalForDb = globalThis;
+function createPrismaClient() {
+  if (globalForDb.prisma) {
+    return globalForDb.prisma;
+  }
+  let adapter;
+  if (dbUrl.startsWith("postgresql:") || dbUrl.startsWith("postgres:")) {
+    adapter = new PrismaPg({ connectionString: dbUrl });
+  } else {
+    const sqliteFilePath = dbUrl.replace(/^file:/, "").split("?")[0];
+    adapter = new PrismaBetterSqlite3({ url: sqliteFilePath });
+  }
+  const client = new PrismaClient({ adapter });
+  if (dbUrl.startsWith("file:")) {
+    client.$executeRawUnsafe("PRAGMA journal_mode = WAL;").catch(() => {
+    });
+    client.$executeRawUnsafe("PRAGMA busy_timeout = 5000;").catch(() => {
+    });
+  }
+  globalForDb.prisma = client;
+  return client;
+}
+var prisma = createPrismaClient();
+async function checkDatabaseHealth() {
+  const provider = dbUrl.startsWith("postgres") ? "postgresql" : "sqlite";
+  try {
+    await prisma.$queryRawUnsafe("SELECT 1 as connected");
+    return { ok: true, provider };
+  } catch (err) {
+    console.error("[Database Health Check Failed]:", err?.message || err);
+    return { ok: false, provider };
+  }
 }
 
 // src/server/auth.ts
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import fs from "fs";
+import path2 from "path";
 
 // src/server/subscription.ts
 function evaluateSubscription(user) {
@@ -94,6 +126,50 @@ function evaluateSubscription(user) {
   };
 }
 
+// src/server/utils/dbErrorHandler.ts
+import { Prisma } from "@prisma/client";
+function isDatabaseError(err) {
+  if (!err) return false;
+  if (err instanceof Prisma.PrismaClientKnownRequestError) return true;
+  if (err instanceof Prisma.PrismaClientUnknownRequestError) return true;
+  if (err instanceof Prisma.PrismaClientRustPanicError) return true;
+  if (err instanceof Prisma.PrismaClientInitializationError) return true;
+  if (err instanceof Prisma.PrismaClientValidationError) return true;
+  if (typeof err.code === "string" && (err.code.startsWith("P") || err.code.startsWith("42") || err.code === "ECONNREFUSED")) {
+    return true;
+  }
+  if (typeof err.name === "string" && err.name.includes("Prisma")) return true;
+  const msg = (err.message || "").toLowerCase();
+  if (msg.includes("table") || msg.includes("relation") || msg.includes("database") || msg.includes("prisma") || msg.includes("connection refused") || msg.includes("p2021")) {
+    return true;
+  }
+  return false;
+}
+function sanitizeErrorString(val) {
+  if (typeof val === "string") {
+    return val.replace(/postgres(ql)?:\/\/[^@\s]+@/gi, "postgres://***:***@");
+  }
+  return val;
+}
+function handleDatabaseError(err, res, fallbackMessage = "Internal server error") {
+  const isDb = isDatabaseError(err);
+  console.error("[DATABASE DIAGNOSTIC LOG]:", {
+    name: err?.name,
+    code: err?.code,
+    message: sanitizeErrorString(err?.message),
+    isDatabaseError: isDb
+  });
+  if (isDb) {
+    res.status(503).json({
+      error: "Database temporarily unavailable"
+    });
+    return;
+  }
+  res.status(500).json({
+    error: fallbackMessage
+  });
+}
+
 // src/server/auth.ts
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
@@ -115,7 +191,80 @@ function generateToken(user) {
     { expiresIn: "7d" }
   );
 }
-function authenticateToken(req, res, next) {
+var cachedFirebaseConfig = null;
+function getFirebaseConfig() {
+  if (cachedFirebaseConfig) return cachedFirebaseConfig;
+  let projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "";
+  let apiKey = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "";
+  try {
+    const configPath = path2.resolve(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(configPath)) {
+      const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      if (!projectId && parsed.projectId) projectId = parsed.projectId;
+      if (!apiKey && parsed.apiKey) apiKey = parsed.apiKey;
+    }
+  } catch (err) {
+    console.warn("Notice reading firebase-applet-config.json:", err);
+  }
+  if (!projectId) projectId = "gen-lang-client-0891492608";
+  if (!apiKey) apiKey = "AIzaSyBKwIQiz76hzF68XmMF2LyWVIWoDg-55So";
+  cachedFirebaseConfig = { projectId, apiKey };
+  return cachedFirebaseConfig;
+}
+async function verifyFirebaseIdToken(token) {
+  if (!token || typeof token !== "string" || token.split(".").length !== 3) {
+    return null;
+  }
+  const { projectId, apiKey } = getFirebaseConfig();
+  const decoded = jwt.decode(token, { complete: true });
+  if (!decoded || !decoded.payload) {
+    return null;
+  }
+  const payload = decoded.payload;
+  const nowInSeconds = Math.floor(Date.now() / 1e3);
+  if (payload.exp && payload.exp < nowInSeconds) {
+    return null;
+  }
+  const isFirebaseIssuer = typeof payload.iss === "string" && payload.iss.includes("securetoken.google.com");
+  const isCorrectAudience = !projectId || payload.aud === projectId;
+  if (!isFirebaseIssuer && !isCorrectAudience) {
+    return null;
+  }
+  if (apiKey) {
+    try {
+      const response = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken: token })
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const fbUser = data?.users?.[0];
+        if (fbUser && fbUser.email) {
+          return {
+            uid: fbUser.localId,
+            email: fbUser.email.toLowerCase().trim(),
+            name: fbUser.displayName || payload.name || fbUser.email.split("@")[0]
+          };
+        }
+      }
+    } catch (netErr) {
+      console.warn("Google Identity Toolkit lookup notice:", netErr);
+    }
+  }
+  if (isFirebaseIssuer && isCorrectAudience && payload.email) {
+    return {
+      uid: payload.sub || payload.user_id || `fb_${Date.now()}`,
+      email: String(payload.email).toLowerCase().trim(),
+      name: payload.name || payload.email.split("@")[0]
+    };
+  }
+  return null;
+}
+async function authenticateToken(req, res, next) {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
   if (!token) {
@@ -125,8 +274,54 @@ function authenticateToken(req, res, next) {
   try {
     const decoded = jwt.verify(token, getJwtSecret());
     req.user = decoded;
-    next();
+    return next();
   } catch (err) {
+    try {
+      const fbUser = await verifyFirebaseIdToken(token);
+      if (fbUser && fbUser.email) {
+        const normalizedEmail = fbUser.email.toLowerCase().trim();
+        const isAdmin = ADMIN_EMAILS.includes(normalizedEmail);
+        let dbUser = await prisma.user.findUnique({
+          where: { email: normalizedEmail }
+        });
+        if (!dbUser) {
+          const randomPassword = await bcrypt.hash(Math.random().toString(36) + Date.now(), 10);
+          dbUser = await prisma.user.create({
+            data: {
+              name: fbUser.name || normalizedEmail.split("@")[0],
+              email: normalizedEmail,
+              password: randomPassword,
+              role: isAdmin ? "ADMIN" : "STUDENT",
+              isPremium: isAdmin,
+              premiumSince: isAdmin ? /* @__PURE__ */ new Date() : null
+            }
+          });
+        } else if (isAdmin && (dbUser.role !== "ADMIN" || !dbUser.isPremium)) {
+          dbUser = await prisma.user.update({
+            where: { id: dbUser.id },
+            data: { role: "ADMIN", isPremium: true, premiumSince: /* @__PURE__ */ new Date() }
+          });
+        }
+        const sub = evaluateSubscription(dbUser);
+        const appPayload = {
+          id: dbUser.id,
+          email: dbUser.email,
+          role: dbUser.role,
+          isPremium: sub.isPremium
+        };
+        req.user = appPayload;
+        const upgradedToken = generateToken(appPayload);
+        res.setHeader("x-application-token", upgradedToken);
+        res.setHeader("Access-Control-Expose-Headers", "x-application-token");
+        return next();
+      }
+    } catch (fbErr) {
+      if (isDatabaseError(fbErr)) {
+        handleDatabaseError(fbErr, res, "Database error during token authentication");
+        return;
+      }
+      console.warn("Firebase token verification error in authenticateToken:", fbErr);
+    }
     res.status(401).json({ error: "Invalid or expired token" });
   }
 }
@@ -159,6 +354,10 @@ async function requireAdmin(req, res, next) {
     req.user.role = "ADMIN";
     next();
   } catch (err) {
+    if (isDatabaseError(err)) {
+      handleDatabaseError(err, res, "Database error verifying admin privileges");
+      return;
+    }
     console.error("Database query error in requireAdmin:", err);
     res.status(500).json({ error: "Failed to verify admin authorization" });
   }
@@ -238,7 +437,7 @@ router.post("/register", async (req, res) => {
       res.status(400).json({ error: "User with this email already exists" });
       return;
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt2.hash(password, 10);
     const isAdminEmail = isKnownAdminEmail(normalizedEmail);
     const user = await prisma.user.create({
       data: {
@@ -273,8 +472,7 @@ router.post("/register", async (req, res) => {
       }
     });
   } catch (err) {
-    console.error("Registration error:", err);
-    res.status(500).json({ error: "Server error during registration" });
+    handleDatabaseError(err, res, "Server error during registration");
   }
 });
 router.post("/login", async (req, res) => {
@@ -292,7 +490,7 @@ router.post("/login", async (req, res) => {
       res.status(401).json({ error: "Invalid email or password" });
       return;
     }
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt2.compare(password, user.password);
     if (!isMatch) {
       res.status(401).json({ error: "Invalid email or password" });
       return;
@@ -333,14 +531,29 @@ router.post("/login", async (req, res) => {
       }
     });
   } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ error: "Server error during login" });
+    handleDatabaseError(err, res, "Server error during login");
   }
 });
 var handleGoogleAuth = async (req, res) => {
   try {
-    const email = req.body?.email || req.query?.email;
-    const name = req.body?.name || req.query?.name;
+    const idToken = req.body?.idToken;
+    let email = req.body?.email || req.query?.email;
+    let name = req.body?.name || req.query?.name;
+    const authHeader = req.headers["authorization"];
+    const bearerToken = authHeader && authHeader.split(" ")[1];
+    const candidateIdToken = idToken || (bearerToken && bearerToken.split(".").length === 3 ? bearerToken : null);
+    if (candidateIdToken && typeof candidateIdToken === "string") {
+      const verifiedFb = await verifyFirebaseIdToken(candidateIdToken);
+      if (verifiedFb && verifiedFb.email) {
+        email = verifiedFb.email;
+        if (!name || name === "Google Student") {
+          name = verifiedFb.name || email.split("@")[0];
+        }
+      } else if (idToken) {
+        res.status(401).json({ error: "Invalid or expired Firebase authentication token" });
+        return;
+      }
+    }
     if (!email || typeof email !== "string" || !email.trim()) {
       res.status(400).json({ error: "Valid email address is required for Google Sign-In" });
       return;
@@ -352,7 +565,7 @@ var handleGoogleAuth = async (req, res) => {
     });
     if (!user) {
       const displayName = typeof name === "string" && name.trim() ? name.trim() : normalizedEmail.split("@")[0];
-      const randomPassword = await bcrypt.hash(Math.random().toString(36) + Date.now(), 10);
+      const randomPassword = await bcrypt2.hash(Math.random().toString(36) + Date.now(), 10);
       user = await prisma.user.create({
         data: {
           name: displayName,
@@ -399,8 +612,7 @@ var handleGoogleAuth = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error("Google Sign-In Error:", err);
-    res.status(500).json({ error: err?.message || "Server error during Google Sign-In" });
+    handleDatabaseError(err, res, "Server error during Google Sign-In");
   }
 };
 router.post("/google", handleGoogleAuth);
@@ -479,8 +691,7 @@ router.get("/me", authenticateToken, async (req, res) => {
     }
     res.json({ user: { ...user, isPremium: sub.isPremium, subscription: sub } });
   } catch (err) {
-    console.error("Get me error:", err);
-    res.status(500).json({ error: "Server error fetching user details" });
+    handleDatabaseError(err, res, "Server error fetching user details");
   }
 });
 router.get("/account-details", authenticateToken, async (req, res) => {
@@ -560,8 +771,7 @@ router.get("/account-details", authenticateToken, async (req, res) => {
       payments: formattedPayments
     });
   } catch (err) {
-    console.error("Account details error:", err);
-    res.status(500).json({ error: "Failed to retrieve account and payment details" });
+    handleDatabaseError(err, res, "Failed to retrieve account and payment details");
   }
 });
 var authRoutes_default = router;
@@ -2288,7 +2498,36 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "10mb" }));
 app.get(["/api/health", "/health"], (_req, res) => {
-  res.json({ status: "ok", time: (/* @__PURE__ */ new Date()).toISOString() });
+  res.json({
+    status: "ok",
+    time: (/* @__PURE__ */ new Date()).toISOString()
+  });
+});
+app.get(["/api/health/db", "/health/db"], async (_req, res) => {
+  try {
+    const health = await checkDatabaseHealth();
+    if (health.ok) {
+      res.json({
+        status: "ok",
+        database: "connected",
+        provider: health.provider,
+        time: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    } else {
+      res.status(503).json({
+        status: "error",
+        database: "disconnected",
+        time: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  } catch (err) {
+    console.error("Health check exception:", err?.message || err);
+    res.status(503).json({
+      status: "error",
+      database: "disconnected",
+      time: (/* @__PURE__ */ new Date()).toISOString()
+    });
+  }
 });
 app.use("/api/auth", authRoutes_default);
 app.use("/auth", authRoutes_default);
@@ -2303,6 +2542,12 @@ app.all(["/api", "/api/*", "/auth/*", "/payment/*", "/tests/*", "/admin/*"], (re
 });
 app.use((err, _req, res, _next) => {
   console.error("Unhandled API Server Error:", err);
+  if (isDatabaseError(err)) {
+    res.status(503).json({
+      error: "Database temporarily unavailable"
+    });
+    return;
+  }
   res.status(err?.status || 500).json({
     error: err?.message || "Internal Server Error during request processing"
   });

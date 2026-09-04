@@ -1,5 +1,4 @@
 import path from 'path';
-import fs from 'fs';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
@@ -28,19 +27,51 @@ if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
 }
 
 const dbUrl = process.env.DATABASE_URL!;
-let adapter: any;
 
-if (dbUrl.startsWith('postgresql:') || dbUrl.startsWith('postgres:')) {
-  adapter = new PrismaPg({ connectionString: dbUrl });
-} else {
-  const sqliteFilePath = dbUrl.replace(/^file:/, '').split('?')[0];
-  adapter = new PrismaBetterSqlite3({ url: sqliteFilePath });
+interface GlobalDbState {
+  prisma?: PrismaClient;
 }
 
-export const prisma = new PrismaClient({ adapter });
+const globalForDb = globalThis as unknown as GlobalDbState;
 
-// Enable WAL mode and busy timeout only when running local SQLite database
-if (dbUrl.startsWith('file:')) {
-  prisma.$executeRawUnsafe('PRAGMA journal_mode = WAL;').catch(() => {});
-  prisma.$executeRawUnsafe('PRAGMA busy_timeout = 5000;').catch(() => {});
+function createPrismaClient(): PrismaClient {
+  if (globalForDb.prisma) {
+    return globalForDb.prisma;
+  }
+
+  let adapter: any;
+  if (dbUrl.startsWith('postgresql:') || dbUrl.startsWith('postgres:')) {
+    adapter = new PrismaPg({ connectionString: dbUrl });
+  } else {
+    const sqliteFilePath = dbUrl.replace(/^file:/, '').split('?')[0];
+    adapter = new PrismaBetterSqlite3({ url: sqliteFilePath });
+  }
+
+  const client = new PrismaClient({ adapter });
+
+  // Enable WAL mode and busy timeout only when running local SQLite database
+  if (dbUrl.startsWith('file:')) {
+    client.$executeRawUnsafe('PRAGMA journal_mode = WAL;').catch(() => {});
+    client.$executeRawUnsafe('PRAGMA busy_timeout = 5000;').catch(() => {});
+  }
+
+  globalForDb.prisma = client;
+  return client;
+}
+
+export const prisma: PrismaClient = createPrismaClient();
+
+/**
+ * Diagnostic database health checker that safely tests database connectivity
+ * WITHOUT exposing connection strings, credentials, or internal details.
+ */
+export async function checkDatabaseHealth(): Promise<{ ok: boolean; provider: string }> {
+  const provider = dbUrl.startsWith('postgres') ? 'postgresql' : 'sqlite';
+  try {
+    await prisma.$queryRawUnsafe('SELECT 1 as connected');
+    return { ok: true, provider };
+  } catch (err: any) {
+    console.error('[Database Health Check Failed]:', err?.message || err);
+    return { ok: false, provider };
+  }
 }
