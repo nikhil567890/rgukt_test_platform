@@ -1,0 +1,144 @@
+{
+  "entities": {
+    "users": {
+      "title": "users",
+      "description": "Student and Admin User Profiles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["STUDENT", "ADMIN"] },
+        "isPremium": { "type": "boolean" },
+        "premiumSince": { "type": "string" },
+        "currentStreak": { "type": "number" },
+        "longestStreak": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "role", "isPremium"]
+    },
+    "payments": {
+      "title": "payments",
+      "description": "Subscription Payment Receipts and Razorpay Transactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "razorpayOrderId": { "type": "string" },
+        "razorpayPaymentId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["PAID", "CREATED", "FAILED"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "razorpayOrderId", "amount", "status"]
+    },
+    "tests": {
+      "title": "tests",
+      "description": "Mock Entrance Test Papers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "subject": { "type": "string" },
+        "durationMin": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "subject", "durationMin", "totalMarks", "isPublished"]
+    },
+    "questions": {
+      "title": "questions",
+      "description": "MCQ Questions for Test Papers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "testId": { "type": "string" },
+        "questionText": { "type": "string" },
+        "optionA": { "type": "string" },
+        "optionB": { "type": "string" },
+        "optionC": { "type": "string" },
+        "optionD": { "type": "string" },
+        "correctOption": { "type": "string", "enum": ["A", "B", "C", "D"] },
+        "explanation": { "type": "string" },
+        "marks": { "type": "number" }
+      },
+      "required": ["id", "testId", "questionText", "optionA", "optionB", "optionC", "optionD", "correctOption"]
+    },
+    "attempts": {
+      "title": "attempts",
+      "description": "Student Test Attempts and Performance Analytics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentEmail": { "type": "string" },
+        "testId": { "type": "string" },
+        "testTitle": { "type": "string" },
+        "subject": { "type": "string" },
+        "score": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "percentage": { "type": "number" },
+        "timeTakenSec": { "type": "number" },
+        "submittedAt": { "type": "string" }
+      },
+      "required": ["id", "studentId", "testId", "score", "totalMarks", "submittedAt"]
+    },
+    "benchmarks": {
+      "title": "benchmarks",
+      "description": "Anonymized topper and batch performance benchmark dataset for subject comparison",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "subject": { "type": "string" },
+        "score": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "percentage": { "type": "number" },
+        "timeTakenSec": { "type": "number" },
+        "submittedAt": { "type": "string" }
+      },
+      "required": ["id", "subject", "score", "totalMarks", "percentage"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profile document containing account credentials and role"
+    },
+    "/users/{userId}/payments/{paymentId}": {
+      "schema": "payments",
+      "description": "Subcollection storing user-specific payment records and subscription transactions"
+    },
+    "/users/{userId}/attempts/{attemptId}": {
+      "schema": "attempts",
+      "description": "Subcollection storing user test attempt logs and scorecards"
+    },
+    "/payments/{paymentId}": {
+      "schema": "payments",
+      "description": "Top-level payment transactions collection for payment auditing"
+    },
+    "/tests/{testId}": {
+      "schema": "tests",
+      "description": "Mock test paper definitions"
+    },
+    "/tests/{testId}/questions/{questionId}": {
+      "schema": "questions",
+      "description": "Questions linked to a specific test paper"
+    },
+    "/questions/{questionId}": {
+      "schema": "questions",
+      "description": "Global question bank repository"
+    },
+    "/attempts/{attemptId}": {
+      "schema": "attempts",
+      "description": "Top-level collection for test attempts and platform analytics"
+    },
+    "/benchmarks/{benchmarkId}": {
+      "schema": "benchmarks",
+      "description": "Anonymized topper and batch benchmark dataset accessible for student analytics"
+    }
+  }
+}

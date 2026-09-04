@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RGUKT Mathematics TestPrep Platform</title>
+    <meta name="description" content="Dedicated RGUKT CET entrance preparation platform exclusively for Mathematics with mock tests, chapter-wise question banks, streak tracking, Razorpay payment, and analytics." />
+    <meta property="og:title" content="RGUKT Mathematics TestPrep Platform" />
+    <meta property="og:description" content="Dedicated RGUKT CET entrance preparation platform exclusively for Mathematics with mock tests, chapter-wise question banks, streak tracking, Razorpay payment, and analytics." />
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']],
+          processEscapes: true,
+          processEnvironments: true
+        },
+        options: {
+          ignoreHtmlClass: 'tex2jax_ignore',
+          processHtmlClass: 'tex2jax_process'
+        }
+      };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN') ||
+        (request.auth.token.email != null && request.auth.token.email in ['jaan546jaan@gmail.com', 'admin@rgukt.ac.in', 'rvinodh45@gmail.com', 'avinashinapakurthi31@gmail.com'])
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validation for User Profile Document
+    // Enforces storage of: email, name, isPremium, premium start date (if isPremium), and streak
+    function isValidUser(data) {
+      return data.email is string && data.email.size() > 0 &&
+             data.name is string && data.name.size() > 0 &&
+             data.isPremium is bool &&
+             (!data.isPremium || 
+               (('premiumSince' in data && data.premiumSince != null && (data.premiumSince is string || data.premiumSince is timestamp)) ||
+                ('premiumStartDate' in data && data.premiumStartDate != null && (data.premiumStartDate is string || data.premiumStartDate is timestamp)))) &&
+             (('currentStreak' in data && data.currentStreak is number) || ('streak' in data && data.streak is number));
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profiles collection
+    match /users/{userId} {
+      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow create: if isSignedIn() && (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
+      allow update: if isSignedIn() && (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
+
+      // User payments subcollection
+      match /payments/{paymentId} {
+        allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
+        allow write: if isSignedIn() && (isOwner(userId) || isAdmin());
+      }
+
+      // User test attempts subcollection
+      match /attempts/{attemptId} {
+        allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
+        allow write: if isSignedIn() && (isOwner(userId) || isAdmin());
+      }
+    }
+
+    // Top-level payments collection
+    match /payments/{paymentId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // Top-level mock tests collection
+    match /tests/{testId} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      match /questions/{questionId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    // Top-level question bank
+    match /questions/{questionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Top-level test attempts collection
+    match /attempts/{attemptId} {
+      allow read: if isSignedIn() && (resource.data.studentId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (request.resource.data.studentId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // Top-level benchmarks collection for public / student topper analytics
+    match /benchmarks/{benchmarkId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

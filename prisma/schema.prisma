@@ -1,0 +1,109 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String    @id @default(uuid())
+  name           String
+  email          String    @unique
+  password       String
+  role           String    @default("STUDENT") // ADMIN or STUDENT
+  isPremium      Boolean   @default(false)
+  premiumSince   DateTime?
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
+  lastAttemptDay String?   // YYYY-MM-DD
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  attempts       Attempt[]
+  payments       Payment[]
+}
+
+model Test {
+  id          String     @id @default(uuid())
+  title       String
+  subject     String
+  durationMin Int
+  totalMarks  Int
+  isPublished Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  questions   Question[]
+  attempts    Attempt[]
+}
+
+model Question {
+  id            String   @id @default(uuid())
+  testId        String
+  test          Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  questionText  String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctOption String   // "A", "B", "C", or "D"
+  marks         Int      @default(1)
+  explanation   String?
+  createdAt     DateTime @default(now())
+}
+
+model Attempt {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testId       String
+  test         Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers      String   // JSON stringified e.g. {"qId": "A"}
+  score        Int
+  totalMarks   Int
+  timeTakenSec Int
+  startedAt    DateTime @default(now())
+  submittedAt  DateTime @default(now())
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  razorpayOrderId   String   @unique
+  razorpayPaymentId String?
+  amount            Int      // in paise e.g. 300000
+  status            String   @default("CREATED") // CREATED, PAID, FAILED
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Batch {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  stream      String   // e.g. RGUKT CET, PUC-I, PUC-II
+  description String?
+  studentCount Int     @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model Announcement {
+  id          String   @id @default(uuid())
+  title       String
+  content     String
+  priority    String   @default("NORMAL") // NORMAL, URGENT, EXAM_ALERT
+  isPinned    Boolean  @default(false)
+  targetBatch String   @default("ALL")
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  details   String
+  adminName String   @default("Vinodh Sir")
+  ipAddress String?  @default("127.0.0.1")
+  createdAt DateTime @default(now())
+}
