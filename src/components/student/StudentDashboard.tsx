@@ -105,12 +105,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
     return (
       <div id="student-guest-welcome" className="max-w-2xl mx-auto my-8 p-6 sm:p-8 bg-white rounded-2xl border border-slate-200 shadow-sm text-center space-y-5">
         <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto border border-indigo-100 shadow-2xs">
-          <GraduationCap className="w-8 h-8" />
+          <GraduationCap className="w-8 h-8" aria-hidden="true" />
         </div>
         <div className="space-y-2">
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900">Welcome to RGUKT Entrance Exam Prep</h2>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900">VSMC RGUKT Test Preparation</h1>
           <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-            Practice grand test papers, track your subject performance, build daily study streaks, and prepare for top RGUKT CET ranks.
+            Prepare for RGUKT CET with VSMC's online test series and practice tests. Vinodh Sir Maths Classes provides focused RGUKT preparation resources to help students practice and evaluate their performance.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -128,6 +128,28 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             <Sparkles className="w-4 h-4" />
             <span>Unlock Premium Access</span>
           </button>
+        </div>
+
+        {/* Small natural SEO-focused section */}
+        <div className="mt-6 pt-5 border-t border-slate-100 text-left grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+            <h2 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 mb-1">
+              <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+              <span>RGUKT Preparation & Test Series</span>
+            </h2>
+            <p className="text-[11px] text-slate-500 leading-normal">
+              Structured mathematics practice tests covering key topics for effective RGUKT CET entrance preparation.
+            </p>
+          </div>
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+            <h2 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 mb-1">
+              <Award className="w-3.5 h-3.5 text-amber-600" />
+              <span>Vinodh Sir Test Series</span>
+            </h2>
+            <p className="text-[11px] text-slate-500 leading-normal">
+              Timed mock tests by Vinodh Sir RGUKT Testprep with instant score evaluation, streak tracking, and step-by-step solutions.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -201,15 +223,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center space-x-2">
               <span className="px-2.5 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-[10px] font-bold uppercase tracking-wider">
-                Student Portal
+                VSMC Student Portal
               </span>
-              <span className="text-[11px] text-slate-400 font-medium">RGUKT CET 2026</span>
+              <span className="text-[11px] text-slate-400 font-medium">Vinodh Sir Maths Classes • RGUKT CET 2026</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
               Welcome back, {user.name}!
             </h1>
             <p className="text-xs text-slate-300 max-w-xl">
-              Consistent practice is the key to top RGUKT CET ranks. Attempt test papers daily to build your study streak.
+              Consistent practice is the key to top RGUKT CET ranks. Attempt the Vinodh Sir Test Series daily to build your study streak.
             </p>
           </div>
 

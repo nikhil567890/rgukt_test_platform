@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /?tab=test-list
+Allow: /?tab=student-subjects
+Disallow: /api/
+Disallow: /admin
+Disallow: /exam
+Disallow: /solution
+
+Sitemap: https://ais-pre-ha254hjqfbprfni6cmamvn-655109937250.asia-east1.run.app/sitemap.xml

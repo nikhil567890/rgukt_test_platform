@@ -42,18 +42,20 @@ export const Header: React.FC<HeaderProps> = ({
             id="brand-logo"
             onClick={() => onSelectTab(isAdmin ? 'admin-overview' : 'student-dashboard')}
             className="flex items-center space-x-2.5 cursor-pointer group"
+            title="VSMC RGUKT Test Preparation | Vinodh Sir Maths Classes"
+            aria-label="VSMC RGUKT Test Preparation logo"
           >
             <div className="w-8 h-8 rounded-md bg-indigo-600 flex items-center justify-center text-white font-bold shadow-xs group-hover:bg-indigo-700 transition-colors">
-              <GraduationCap className="w-5 h-5" />
+              <GraduationCap className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
               <div className="flex items-center space-x-1.5">
-                <span className="text-base font-bold tracking-tight text-slate-900">RGUKT</span>
+                <span className="text-base font-bold tracking-tight text-slate-900">VSMC</span>
                 <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
-                  Prep
+                  RGUKT Prep
                 </span>
               </div>
-              <p className="text-[10px] text-slate-500 font-medium leading-none">Entrance Exam Test Series</p>
+              <p className="text-[10px] text-slate-500 font-medium leading-none">Vinodh Sir Maths Classes</p>
             </div>
           </div>
 

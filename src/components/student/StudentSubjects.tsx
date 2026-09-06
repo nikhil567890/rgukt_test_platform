@@ -60,11 +60,11 @@ export const StudentSubjects: React.FC<StudentSubjectsProps> = ({ onStartTest })
       <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-sm border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <span className="px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wider border border-indigo-400/30">
-            Syllabus & Practice
+            VSMC • RGUKT Preparation
           </span>
-          <h1 className="text-2xl font-black text-white mt-1">Subjects & Exam Topics</h1>
+          <h1 className="text-2xl font-black text-white mt-1">RGUKT Preparation & Exam Topics</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Explore RGUKT entrance syllabus structure, uploaded question topics, and subject practice tests.
+            Prepare for RGUKT CET with VSMC RGUKT Test Preparation, practice tests, and Vinodh Sir's test series.
           </p>
         </div>
         <div className="relative w-full md:w-64">

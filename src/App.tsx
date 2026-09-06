@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { AuthModal } from './components/AuthModal';
 import { PaywallModal } from './components/PaywallModal';
 import { AccountModal } from './components/AccountModal';
+import { SEOHead } from './components/common/SEOHead';
 
 import { StudentDashboard } from './components/student/StudentDashboard';
 import { TestList } from './components/student/TestList';
@@ -35,7 +36,16 @@ function AppContent() {
   const { isLoggedIn, isAdmin, isLoading } = useAuth();
 
   // Navigation view tab state
-  const [currentTab, setCurrentTab] = useState<string>('student-dashboard');
+  const [currentTab, setCurrentTab] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab && ['student-dashboard', 'test-list', 'student-subjects', 'student-question-bank'].includes(tab)) {
+        return tab;
+      }
+    }
+    return 'student-dashboard';
+  });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Sub-parameters
@@ -92,6 +102,13 @@ function AppContent() {
   // Handlers for switching tabs
   const handleSelectTab = (tab: string) => {
     setCurrentTab(tab);
+    if (typeof window !== 'undefined') {
+      if (['test-list', 'student-subjects', 'student-question-bank'].includes(tab)) {
+        window.history.replaceState(null, '', `/?tab=${tab}`);
+      } else if (tab === 'student-dashboard') {
+        window.history.replaceState(null, '', '/');
+      }
+    }
   };
 
   // Student actions
@@ -146,6 +163,9 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col selection:bg-indigo-600 selection:text-white">
+      {/* Dynamic SEO Metadata */}
+      <SEOHead currentTab={currentTab} />
+
       {/* Header Bar */}
       <Header
         currentTab={currentTab}

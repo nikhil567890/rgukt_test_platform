@@ -86,13 +86,13 @@ export const TestList: React.FC<TestListProps> = ({ onStartExam, onOpenPaywall }
       <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div>
           <span className="px-2.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] font-extrabold mb-1.5 inline-block">
-            RGUKT CET Entrance Series
+            VSMC • Vinodh Sir RGUKT Testprep
           </span>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900">
-            Mock Test Papers
+            Vinodh Sir Test Series
           </h1>
           <p className="text-xs text-slate-500 mt-0.5 max-w-xl">
-            Timed MCQ practice papers based on the latest RGUKT CET syllabus (Mathematics, Physical Science, & Biological Science).
+            Practice with the Vinodh Sir Test Series and prepare effectively for RGUKT CET with online tests, timed mock exams, and instant performance analysis.
           </p>
         </div>
 

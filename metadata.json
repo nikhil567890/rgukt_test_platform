@@ -1,6 +1,6 @@
 {
-  "name": "RGUKT Mathematics TestPrep Platform",
-  "description": "Dedicated RGUKT CET entrance preparation platform exclusively for Mathematics with mock tests, chapter-wise question banks, streak tracking, Razorpay payment, and analytics.",
+  "name": "VSMC RGUKT Test Preparation | Vinodh Sir Maths Classes",
+  "description": "VSMC RGUKT Test Preparation by Vinodh Sir Maths Classes — prepare for RGUKT CET with online test series, practice tests and exam preparation.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
